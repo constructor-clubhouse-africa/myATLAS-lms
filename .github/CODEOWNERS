@@ -1,0 +1,15 @@
+# Code review routing.
+#
+# Default: any team member can approve. Peer review is the norm — it spreads
+# knowledge and stops one person becoming the bottleneck.
+#
+# The paths below are the exceptions. They touch tenant isolation, learner
+# data, or curriculum correctness, where a mistake is expensive and hard to
+# detect later.
+
+*                           @moemer07
+
+/prisma/                    @moemer07
+/server/src/middleware/     @moemer07
+/server/src/lib/            @moemer07
+/.github/                   @moemer07

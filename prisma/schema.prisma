@@ -1,0 +1,621 @@
+// ============================================================================
+// myATLAS — Prisma Schema
+// Constructor Clubhouse Africa
+// MY-02 · 15 tables · 9 core + 6 CAPS
+//
+// ARCHITECTURE — read this before changing anything
+//
+// Two layers:
+//   1. GLOBAL CAPS REFERENCE (CapsSubject, CapsGradeTerm, CapsAssessmentRequirement)
+//      Shared by every school. Seeded once from DBE curriculum data. NO schoolId.
+//      Read-only to schools. Only CCA writes here.
+//
+//   2. SCHOOL-SCOPED DATA (everything else)
+//      Every table carries schoolId, NOT NULL, indexed.
+//      Tenant isolation layer 1 of 3. Layers 2 and 3 are middleware (MY-05).
+//
+// Rules:
+//   - Every school-scoped model has schoolId + @@index([schoolId])
+//   - Everything school-scoped cascades from School (required by MY-33 POPIA deletion)
+//   - Marks are Decimal, never Float
+//   - CAPS reference tables are never deleted by a school-data wipe
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  super_admin
+  school_admin
+  teacher
+  student
+}
+
+enum SubscriptionTier {
+  trial
+  starter
+  basic
+  standard
+  premium
+}
+
+enum SubscriptionStatus {
+  trial_active
+  trial_expired
+  active
+  past_due
+  cancelled
+  suspended
+}
+
+enum CapsPhase {
+  foundation
+  intermediate
+  senior
+  fet
+}
+
+enum AssessmentType {
+  test
+  assignment
+  exam
+  project
+}
+
+enum AtpStatus {
+  draft
+  submitted
+  approved
+  returned
+}
+
+enum CapsCountsToward {
+  SBA
+  EXAM
+  ORAL_EXAM
+  SBA_AND_EXAM
+  NOT_IN_CAPS
+}
+
+enum CapsWeightingBasis {
+  OF_SBA
+  OF_TERM_SBA
+  OF_FINAL
+  MEMBERSHIP_ONLY
+  UNSPECIFIED
+}
+
+enum CapsVerificationLevel {
+  VERIFIED_CAPS
+  VERIFIED_ATP
+  VERIFIED
+  DERIVED
+  NEEDS_REVIEW
+  NOT_IN_CAPS
+}
+
+enum AnnouncementTarget {
+  school
+  class
+}
+
+// ============================================================================
+// LAYER 1 — GLOBAL CAPS REFERENCE
+// Seeded by MY-03. No schoolId. Never school-writable.
+// ============================================================================
+
+/// All CAPS subjects, indexed by phase.
+model CapsSubject {
+  id          String    @id @default(uuid())
+  /// subject_id from the CAPS_DATA workbook. Natural key — makes reseeding idempotent.
+  sourceId    Int       @unique @map("source_id")
+  subjectName String    @map("subject_name")
+  phase       CapsPhase
+  language    String?
+  /// Free-text notes from the CAPS specialist. May contain unresolved discrepancies.
+  specialistNotes String? @map("specialist_notes")
+
+  gradeTerms             CapsGradeTerm[]
+  assessmentRequirements CapsAssessmentRequirement[]
+  schoolAtps             SchoolAtp[]
+  fapTracking            SchoolFapTracking[]
+  sbaMarks               SbaMarksheet[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([subjectName, phase, language])
+  @@index([phase])
+  @@map("caps_subject")
+}
+
+/// Official CAPS term structure: which topic in which week, per grade per subject.
+/// This is the scaffold the ATP Builder (MY-21) loads.
+model CapsGradeTerm {
+  id        String @id @default(uuid())
+  /// caps_grade_term_id from the workbook. Natural key for idempotent reseeding.
+  sourceId  Int    @unique @map("source_id")
+  subjectId String @map("subject_id")
+  grade     Int
+  term      Int
+
+  /// Raw week allocation exactly as the specialist wrote it.
+  /// e.g. "Weeks 1-3", "Weeks 8-10 (Trial)", "Week 1 (0.5w)". May be null.
+  /// ALWAYS display this to teachers - never the parsed integers below.
+  weekRange String? @map("week_range")
+  /// Best-effort parse of weekRange, for ordering and "which week are we in" logic only.
+  /// Null where weekRange is absent or unparseable. Never use for display.
+  weekStart Int?    @map("week_start")
+  weekEnd   Int?    @map("week_end")
+
+  topic String
+  /// Semicolon-delimited list from the workbook. 1 to 36 items per topic.
+  subtopics String?
+
+  subject     CapsSubject  @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  resources   Resource[]
+  assignments Assignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([subjectId, grade, term])
+  @@index([subjectId, grade, term, weekStart])
+  @@map("caps_grade_term")
+}
+
+/// FAP requirements and SBA weightings per subject/grade/term.
+/// Drives the FAP Tracker (MY-22) and SBA weighting maths (MY-23).
+model CapsAssessmentRequirement {
+  id        String @id @default(uuid())
+  /// ass_req_id from the workbook. Natural key for idempotent reseeding.
+  sourceId  Int    @unique @map("source_id")
+  subjectId String @map("subject_id")
+  grade     Int
+  term      Int
+
+  /// Task label within this subject/grade/term, VERBATIM from CAPS.
+  /// Not always a number: "1", "4-P1" (Task 4 Paper 1), "NSC-P2", "1b", "YE-P1".
+  /// This is the real discriminator: a term holds several tasks, and one task
+  /// can be split across papers. Store as written; never coerce to an integer.
+  taskLabel String @map("task_label")
+  /// Leading digits of taskLabel, for ordering only. "4-P1" -> 4. Never display.
+  taskSequence Int? @map("task_sequence")
+
+  /// Full task description from CAPS, verbatim.
+  /// e.g. "Paper 1: Language in Context (70m, 2hrs) + Paper 2: Literature (80m)".
+  /// This is what a teacher sees. Do not paraphrase it in the UI.
+  taskName String @map("task_name")
+
+  /// Coarse bucket used ONLY by the FAP Tracker to group tasks.
+  /// Null where the task has no sensible equivalent - many language tasks
+  /// (orals, transactional writing) do not map to test/assignment/exam/project.
+  /// Never show this to a teacher. Show taskName.
+  assessmentType AssessmentType? @map("assessment_type")
+
+  /// How many of this task are required. Defaults to 1 where CAPS does not state otherwise.
+  requiredCount Int @default(1) @map("required_count")
+
+  /// Whether this contributes to the SBA mark, the final exam, or neither.
+  countsToward CapsCountsToward @map("counts_toward")
+
+  /// The weighting figure. Null where CAPS does not specify one.
+  weightingPct Decimal? @map("weighting_pct") @db.Decimal(6, 3)
+
+  /// CRITICAL: what weightingPct is a percentage OF.
+  /// 20% OF_SBA and 20% OF_FINAL are completely different numbers.
+  /// The SBA calculation MUST branch on this. Never assume.
+  weightingBasis CapsWeightingBasis? @map("weighting_basis")
+
+  /// Weighting exactly as written in the source, e.g. "20%", "75% of Term 1 SBA".
+  weightingRaw String? @map("weighting_raw")
+
+  /// Specialist notes. May contain unresolved discrepancy warnings.
+  notes String?
+
+  /// Which DBE document this row came from.
+  sourceDocument String? @map("source_document")
+
+  /// How well evidenced this row is. Rows that are not VERIFIED_CAPS, VERIFIED_ATP
+  /// or VERIFIED must not silently drive a compliance warning shown to a teacher.
+  verificationLevel CapsVerificationLevel @map("verification_level")
+
+  subject CapsSubject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([subjectId, grade, term, taskLabel])
+  @@index([subjectId, grade, term])
+  @@index([verificationLevel])
+  @@map("caps_assessment_requirement")
+}
+
+// ============================================================================
+// LAYER 2 — SCHOOL-SCOPED DATA
+// Every model below: schoolId NOT NULL, indexed, cascading from School.
+// ============================================================================
+
+/// Top-level tenant. One row per school.
+model School {
+  id                 String             @id @default(uuid())
+  name               String
+  subscriptionTier   SubscriptionTier   @default(trial) @map("subscription_tier")
+  subscriptionStatus SubscriptionStatus @default(trial_active) @map("subscription_status")
+  trialExpiresAt     DateTime?          @map("trial_expires_at")
+  billingExpiresAt   DateTime?          @map("billing_expires_at")
+
+  // POPIA — school cannot operate until the DPA is accepted (MY-10)
+  dpaAcceptedAt DateTime? @map("dpa_accepted_at")
+  dpaAcceptedBy String?   @map("dpa_accepted_by")
+
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
+  users          User[]
+  classes        Class[]
+  enrollments    ClassEnrollment[]
+  resources      Resource[]
+  assignments    Assignment[]
+  submissions    Submission[]
+  announcements  Announcement[]
+  timetables     Timetable[]
+  atps           SchoolAtp[]
+  fapTracking    SchoolFapTracking[]
+  sbaMarksheets  SbaMarksheet[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([subscriptionStatus])
+  @@index([trialExpiresAt])
+  @@map("school")
+}
+
+/// All users. Role-polymorphic: school_admin, teacher, student, super_admin.
+model User {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+
+  forcePwChange Boolean @default(true) @map("force_pw_change")
+  isActive      Boolean @default(true) @map("is_active")
+
+  // Student-only fields
+  gradeLevel  Int?    @map("grade_level")
+  parentEmail String? @map("parent_email")
+
+  // POPIA — parental consent tracking (MY-11)
+  popiaConsentAt        DateTime? @map("popia_consent_at")
+  popiaConsentToken     String?   @unique @map("popia_consent_token")
+  popiaConsentSentAt    DateTime? @map("popia_consent_sent_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  classesTaught         Class[]             @relation("ClassTeacher")
+  enrollments           ClassEnrollment[]
+  submissions           Submission[]
+  announcementsPosted   Announcement[]      @relation("AnnouncementAuthor")
+  timetablesUploaded    Timetable[]         @relation("TimetableUploader")
+  atps                  SchoolAtp[]         @relation("AtpTeacher")
+  atpsApproved          SchoolAtp[]         @relation("AtpApprover")
+  fapTracking           SchoolFapTracking[]
+  sbaMarks              SbaMarksheet[]
+
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, role])
+  @@index([email])
+  @@map("user")
+}
+
+/// A subject class taught by one teacher.
+model Class {
+  id         String @id @default(uuid())
+  schoolId   String @map("school_id")
+  teacherId  String @map("teacher_id")
+  name       String
+  subject    String
+  gradeLevel Int    @map("grade_level")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  school      School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher     User              @relation("ClassTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  enrollments ClassEnrollment[]
+  resources   Resource[]
+  assignments Assignment[]
+  sbaMarks    SbaMarksheet[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, teacherId])
+  @@map("class")
+}
+
+/// Student-to-class junction.
+model ClassEnrollment {
+  id        String @id @default(uuid())
+  schoolId  String @map("school_id")
+  classId   String @map("class_id")
+  studentId String @map("student_id")
+
+  isActive   Boolean  @default(true) @map("is_active")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+
+  school  School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class   Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([classId, studentId])
+  @@index([schoolId])
+  @@index([schoolId, classId])
+  @@index([schoolId, studentId])
+  @@map("class_enrollment")
+}
+
+/// Teacher-uploaded file or link, tagged to a CAPS topic.
+model Resource {
+  id       String @id @default(uuid())
+  schoolId String @map("school_id")
+  classId  String @map("class_id")
+  title    String
+
+  description String?
+  fileUrl     String? @map("file_url")
+  linkUrl     String? @map("link_url")
+  filePublicId String? @map("file_public_id")
+  fileSizeBytes Int?   @map("file_size_bytes")
+
+  capsGradeTermId String? @map("caps_grade_term_id")
+
+  school       School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class        Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  capsGradeTerm CapsGradeTerm? @relation(fields: [capsGradeTermId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, classId])
+  @@index([capsGradeTermId])
+  @@map("resource")
+}
+
+/// Assignment set by a teacher. Creating one increments the FAP tracker (MY-27).
+model Assignment {
+  id       String @id @default(uuid())
+  schoolId String @map("school_id")
+  classId  String @map("class_id")
+  title    String
+
+  description    String?
+  dueDate        DateTime       @map("due_date")
+  assessmentType AssessmentType @map("assessment_type")
+  maxMark        Decimal        @default(100) @map("max_mark") @db.Decimal(6, 2)
+
+  fileUrl      String? @map("file_url")
+  filePublicId String? @map("file_public_id")
+
+  capsGradeTermId String? @map("caps_grade_term_id")
+
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class         Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  capsGradeTerm CapsGradeTerm? @relation(fields: [capsGradeTermId], references: [id], onDelete: SetNull)
+  submissions   Submission[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, classId])
+  @@index([schoolId, dueDate])
+  @@map("assignment")
+}
+
+/// Student work submission. Grade flows into SbaMarksheet (MY-29).
+model Submission {
+  id           String @id @default(uuid())
+  schoolId     String @map("school_id")
+  assignmentId String @map("assignment_id")
+  studentId    String @map("student_id")
+
+  textContent  String? @map("text_content")
+  fileUrl      String? @map("file_url")
+  filePublicId String? @map("file_public_id")
+
+  grade    Decimal? @db.Decimal(6, 2)
+  feedback String?
+
+  submittedAt DateTime  @default(now()) @map("submitted_at")
+  gradedAt    DateTime? @map("graded_at")
+  gradedById  String?   @map("graded_by_id")
+
+  /// Set when the submission was created offline and synced later (MY-28)
+  syncedAt DateTime? @map("synced_at")
+
+  school     School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([assignmentId, studentId])
+  @@index([schoolId])
+  @@index([schoolId, assignmentId])
+  @@index([schoolId, studentId])
+  @@map("submission")
+}
+
+/// School-wide or class-specific announcement.
+model Announcement {
+  id       String @id @default(uuid())
+  schoolId String @map("school_id")
+  postedBy String @map("posted_by")
+  title    String
+  content  String
+
+  targetType AnnouncementTarget @map("target_type")
+  targetId   String?            @map("target_id")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  author User   @relation("AnnouncementAuthor", fields: [postedBy], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, targetType, targetId])
+  @@map("announcement")
+}
+
+/// Uploaded timetable file, one per term.
+model Timetable {
+  id         String @id @default(uuid())
+  schoolId   String @map("school_id")
+  uploadedBy String @map("uploaded_by")
+
+  fileUrl      String  @map("file_url")
+  filePublicId String? @map("file_public_id")
+  term         Int
+  year         Int
+  isActive     Boolean @default(true) @map("is_active")
+
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  uploader User   @relation("TimetableUploader", fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@index([schoolId, year, term])
+  @@map("timetable")
+}
+
+// ============================================================================
+// LAYER 2b — SCHOOL-SCOPED CAPS DATA
+// These are school data that reference the global CAPS layer.
+// ============================================================================
+
+/// A teacher's completed Annual Teaching Plan (MY-21).
+model SchoolAtp {
+  id        String @id @default(uuid())
+  schoolId  String @map("school_id")
+  teacherId String @map("teacher_id")
+  subjectId String @map("subject_id")
+  grade     Int
+  term      Int
+  year      Int
+
+  contentCoverage String?   @map("content_coverage")
+  methodology     String?
+  resourceNotes   String?   @map("resource_notes")
+  status          AtpStatus @default(draft)
+
+  submittedAt   DateTime? @map("submitted_at")
+  approvedAt    DateTime? @map("approved_at")
+  approvedById  String?   @map("approved_by_id")
+  adminComment  String?   @map("admin_comment")
+
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher    User        @relation("AtpTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  approvedBy User?       @relation("AtpApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  subject    CapsSubject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([schoolId, teacherId, subjectId, grade, term, year])
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, teacherId])
+  @@map("school_atp")
+}
+
+/// FAP completion per teacher per subject per term (MY-22).
+/// completedCount is incremented when an assignment is created (MY-27).
+model SchoolFapTracking {
+  id             String         @id @default(uuid())
+  schoolId       String         @map("school_id")
+  teacherId      String         @map("teacher_id")
+  subjectId      String         @map("subject_id")
+  grade          Int
+  term           Int
+  year           Int
+  assessmentType AssessmentType @map("assessment_type")
+
+  requiredCount  Int @map("required_count")
+  completedCount Int @default(0) @map("completed_count")
+
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject CapsSubject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([schoolId, teacherId, subjectId, grade, term, year, assessmentType])
+  @@index([schoolId])
+  @@index([schoolId, teacherId])
+  @@map("school_fap_tracking")
+}
+
+/// SBA mark capture — one row per student per assessment type per term (MY-23).
+model SbaMarksheet {
+  id             String         @id @default(uuid())
+  schoolId       String         @map("school_id")
+  classId        String         @map("class_id")
+  studentId      String         @map("student_id")
+  subjectId      String         @map("subject_id")
+  grade          Int
+  term           Int
+  year           Int
+  assessmentType AssessmentType @map("assessment_type")
+
+  /// Raw mark as captured by the teacher
+  mark Decimal? @db.Decimal(6, 2)
+  /// Mark out of which total
+  maxMark Decimal @default(100) @map("max_mark") @db.Decimal(6, 2)
+  /// mark/maxMark * sbaWeightPercent — recalculated on write, never trusted from client
+  weightedContribution Decimal? @map("weighted_contribution") @db.Decimal(6, 2)
+
+  capturedAt DateTime  @default(now()) @map("captured_at")
+  /// Set when captured offline and synced later (MY-23)
+  syncedAt   DateTime? @map("synced_at")
+
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject CapsSubject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([schoolId, studentId, subjectId, term, year, assessmentType])
+  @@index([schoolId])
+  @@index([schoolId, classId])
+  @@index([schoolId, studentId])
+  @@map("sba_marksheet")
+}

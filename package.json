@@ -1,0 +1,40 @@
+{
+  "name": "myatlas-lms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "myATLAS — CAPS-native school management platform. Constructor Clubhouse Africa.",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js",
+    "db:reset": "prisma migrate reset",
+    "db:verify": "node prisma/verify-my02.js",
+    "caps:validate": "node prisma/validate-caps.js"
+  },
+  "devDependencies": {
+    "eslint": "9.15.0",
+    "globals": "15.12.0",
+    "prettier": "3.4.1",
+    "prisma": "7.10.0"
+  },
+  "dependencies": {
+    "@prisma/client": "7.10.0",
+    "xlsx": "^0.18.5"
+  },
+  "type": "module"
+}
