@@ -27,8 +27,6 @@ If the CAPS data is wrong, the product is wrong. Every row was signed off before
 
 ## Technical mentorship
 
-Provided by Kudzai Mwedzi.
-
 ---
 
 _To update this file: add your row, open a PR. Describe what you actually built — this is the file recruiters read._
