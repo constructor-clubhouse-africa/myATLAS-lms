@@ -7,6 +7,9 @@
   --color-coral: #ff8f7a;
   --color-cream: #d7ccc8;
 }
+#root {
+  width: 1126px;
+}
 
 :root {
   --text: #6b6375;
