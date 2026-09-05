@@ -1,3 +1,4 @@
+
 //Login and refresh token controller
 const prisma = require('/lib/prisma');
 const {comaprePassword} = require('../lib/password');
@@ -30,10 +31,11 @@ async function login(req, res) {
         const refreshToken = generateRefreshToken(tokenPayload);
 
         return res.status(200).json({ accessToken, refreshToken, forcePasswordChange: user.forcePasswordChange});
-    } catch (error) {
+    } catch (INVALID_CREDENTIALS){
         return res.status(401).json({ error: INVALID_CREDENTIALS });
     }
 }
+
 
 async function refreshToken(req, res) {
     try {
@@ -47,7 +49,7 @@ async function refreshToken(req, res) {
         const accessToken = generateAccessToken(tokenPayload);
 
         return res.status(200).json({accessToken});
-    } catch (error) {
+    } catch (INVALID_CREDENTIALS){
         return res.status(401).json({ error: 'Invalid refresh token' });
     }
 }
