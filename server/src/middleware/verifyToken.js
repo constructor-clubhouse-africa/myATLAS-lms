@@ -1,6 +1,6 @@
-const {verifyAccessToken} = require('../lib/jwt');
+import {verifyAccessToken} from '../lib/jwt.js';
 
-function verifyToken(req, res, next) {
+export function verifyToken(req, res, next) {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -17,5 +17,3 @@ function verifyToken(req, res, next) {
         return res.status(401).json({ error: 'Invalid or expired access token' });
     }
 }
-
-module.exports = {verifyToken};

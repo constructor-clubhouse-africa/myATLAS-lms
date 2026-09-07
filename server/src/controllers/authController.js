@@ -1,26 +1,29 @@
-
 //Login and refresh token controller
-const prisma = require('/lib/prisma');
-const {comaprePassword} = require('../lib/password');
-const {generateAccessToken, generateRefreshToken, verifyRefreshToken} = require('../lib/jwt');
+import prisma from '../lib/prisma.js';
+import {comparePassword} from '../lib/password.js';
+import {generateAccessToken, generateRefreshToken, verifyRefreshToken} from '../lib/jwt.js';
 
 //Generic error message for failed login attempts
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
-async function login(req, res) {
+export async function login(req, res) {
     try{
         const { email, password } = req.body;
+        
+        if(!email || !password){
+            return res.status(400).json({ error: INVALID_CREDENTIALS });
+        }
 
         //email is unique globally not per school
         const user = await prisma.user.findUnique({
-            where: { email },
+            where: { email }
         });
 
         if(!user){
             return res.status(401).json({ error: INVALID_CREDENTIALS });
         }
 
-        const isMatch = await comparePassword(password, user.password);
+        const isMatch = await comparePassword(password, user.passwordHash);
         if(!isMatch){
             return res.status(401).json({ error: INVALID_CREDENTIALS });
         }
@@ -30,28 +33,31 @@ async function login(req, res) {
         const accessToken = generateAccessToken(tokenPayload);
         const refreshToken = generateRefreshToken(tokenPayload);
 
-        return res.status(200).json({ accessToken, refreshToken, forcePasswordChange: user.forcePasswordChange});
-    } catch (INVALID_CREDENTIALS){
+        return res.status(200).json({ accessToken, refreshToken, forcePasswordChange: user.forcePwChange});
+    } catch (err){
+        console.error('Error during login:', err);
         return res.status(401).json({ error: INVALID_CREDENTIALS });
     }
 }
 
 
-async function refreshToken(req, res) {
+export async function refreshToken(req, res) {
     try {
         const { refreshToken } = req.body;
+
         if (!refreshToken) {
             return res.status(401).json({ error: 'Refresh token is required' });
         }
 
         //Throws if the token is invalid or expired
-        const tokenPayload = verifyRefreshToken(refreshToken);
-        const accessToken = generateAccessToken(tokenPayload);
+        const decoded = verifyRefreshToken(refreshToken);
+        const accessToken = generateAccessToken({ userId: decoded.userId, schoolId: decoded.schoolId, role: decoded.role });
 
         return res.status(200).json({accessToken});
-    } catch (INVALID_CREDENTIALS){
-        return res.status(401).json({ error: 'Invalid refresh token' });
+    } catch (err){
+        console.error('Error during token refresh:', err);
+        return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 }
 
-module.exports = { login, refreshToken };
+export default { login, refreshToken};
