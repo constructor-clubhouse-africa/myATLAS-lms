@@ -11,23 +11,23 @@ if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
   throw new Error('Missing JWT secrets in environment variables');
 }
 //Fail at the startup if the secrets are not set in the environment variables
-if(!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET){
-    throw new Error('Missing JWT secrets in environment variables');
+if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
+  throw new Error('Missing JWT secrets in environment variables');
 }
 
 //Payload must contain userId, schoolId, and role (no other related data such as email or password)
 export function generateAccessToken(payload) {
-    return jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+  return jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
 export function generateRefreshToken(payload) {
-    return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+  return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
 }
 
 export function verifyAccessToken(token) {
-    return jwt.verify(token, ACCESS_TOKEN_SECRET);
+  return jwt.verify(token, ACCESS_TOKEN_SECRET);
 }
 
 export function verifyRefreshToken(token) {
-    return jwt.verify(token, REFRESH_TOKEN_SECRET);
+  return jwt.verify(token, REFRESH_TOKEN_SECRET);
 }
