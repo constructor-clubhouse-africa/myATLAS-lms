@@ -53,12 +53,12 @@ export async function refreshToken(req, res) {
     //Verigying still proves the token is genuine, just stopped trusting its role and schoolId claims, since they may have changed since the token was issued
     const decoded = verifyRefreshToken(refreshToken);
     const currentUser = await prisma.user.findUnique({
-      where: {id: decoded.userId},
+      where: { id: decoded.userId },
     });
 
     //Covers the case where the user has been deleted or disabled since the refresh token was issued
-    if(!currentUser) {
-      return res.status(401).json({error: 'Invalid or expired refresh token'});
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
     const accessToken = generateAccessToken({
@@ -74,4 +74,4 @@ export async function refreshToken(req, res) {
   }
 }
 
-export default {login, refreshToken};
+export default { login, refreshToken };
