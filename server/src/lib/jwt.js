@@ -7,9 +7,6 @@ const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
 const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRES_IN;
 const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRES_IN;
 
-if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
-  throw new Error('Missing JWT secrets in environment variables');
-}
 //Fail at the startup if the secrets are not set in the environment variables
 if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
   throw new Error('Missing JWT secrets in environment variables');

@@ -12,8 +12,9 @@ export function verifyToken(req, res, next) {
     const decoded = verifyAccessToken(token);
     req.user = decoded; //MY-05 will read req.user.schoolID and attach req.schoolID to the request object for use in subsequent middleware or route handlers
     next();
-    // eslint-disable-next-line no-unused-vars
+
   } catch (error) {
+    console.error('Error verifying access token:', error);
     return res.status(401).json({ error: 'Invalid or expired access token' });
   }
 }
