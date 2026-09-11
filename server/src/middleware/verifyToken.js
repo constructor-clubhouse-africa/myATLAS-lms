@@ -10,7 +10,8 @@ export function verifyToken(req, res, next) {
 
   try {
     const decoded = verifyAccessToken(token);
-    req.user = decoded; //MY-05 will read req.user.schoolID and attach req.schoolID to the request object for use in subsequent middleware or route handlers
+    req.user = decoded; //{userId, schoolId, role}
+    req.schoolId = decoded.schoolId; //schoolId set directly from the JWT payload for easy access in route handlers
     next();
   } catch (error) {
     console.error('Error verifying access token:', error);
