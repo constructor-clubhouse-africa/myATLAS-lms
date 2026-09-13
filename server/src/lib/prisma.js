@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+
+const { PrismaClient } = pkg;
 
 // Prisma 7 requires a driver adapter. The connection string lives in .env,
 // not in schema.prisma.
