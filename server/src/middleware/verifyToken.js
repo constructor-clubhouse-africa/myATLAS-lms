@@ -1,12 +1,18 @@
 import { verifyAccessToken } from '../lib/jwt.js';
 
 export function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
-    return res.status(401).json({ error: 'Missing or malformed Authorization Header' });
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Missing Authorization Header' });
   }
+
+  const parts = authHeader.split(' ');
+  if(parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
+    return res.status(401).json({ error: 'Malformed Authorization Header' });
+  }
+
+  const token = parts[1];
 
   try {
     const decoded = verifyAccessToken(token);
