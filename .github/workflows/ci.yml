@@ -10,6 +10,9 @@ jobs:
   verify:
     name: Lint, test, schema
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      DIRECT_URL: postgresql://user:pass@localhost:5432/db
 
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +36,6 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
-          DIRECT_URL: postgresql://user:pass@localhost:5432/db
 
       - name: Validate CAPS data against schema constraints
         run: npm run caps:validate
