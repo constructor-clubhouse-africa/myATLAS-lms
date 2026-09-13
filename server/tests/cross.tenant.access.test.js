@@ -59,7 +59,7 @@ test('verifyToken sets req.schoolId from a valid token', async () => {
 
 test(
   'cross-tenant access: School A JWT cannot read School B data',
-  { skip: !process.env.DATABASE_URL },
+  { skip: !process.env.RUN_DB_TESTS },
   async () => {
     const schoolA = await prisma.school.findFirst({
       where: { id: 'f2a79af0-cb22-4a19-b956-0d64add9cd14' },
