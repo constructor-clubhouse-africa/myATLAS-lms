@@ -19,6 +19,6 @@ export function verifyToken(req, res, next) {
     req.schoolId = decoded.schoolId; //schoolId set directly from the JWT payload for easy access in route handlers
     next();
   } catch {
-    return res.status(401).json({error: 'Invalid or expired access token'});
+    return res.status(401).json({ error: 'Invalid or expired access token' });
   }
 }

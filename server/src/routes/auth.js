@@ -8,4 +8,14 @@ router.post('/login', login);
 //Post/auth/refresh returns a new signed JWT on valid refresh token
 router.post('/refresh', refreshToken);
 
+import { verifyToken } from '../middleware/verifyToken.js';
+
+router.get('/me', verifyToken, (req, res) => {
+  res.status(200).json({
+    userId: req.user.userId,
+    schoolId: req.schoolId,
+    role: req.user.role,
+  });
+});
+
 export default router;
