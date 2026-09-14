@@ -1,8 +1,7 @@
-import cloudinary from './configs/cloudinary.js';
+import cloudinary from '..configs/cloudinary.js';
 
 export const uploadToCloudinary = async (buffer, options = {}) => {
-  const { schoolId, fileCategory, additionalMetadata } = options;
-
+  const { schoolId, fileCategory, fileName, additionalMetadata } = options;
   // Validate the input parameters
 
   if (!Buffer.isBuffer(buffer)) {
@@ -19,11 +18,21 @@ export const uploadToCloudinary = async (buffer, options = {}) => {
     );
   }
 
+  if (!fileName) {
+    throw new Error(
+      'Missing required parameter: fileName is needed to set the public ID in Cloudinary.'
+    );
+  }
+
   // Enforce File Size Limits (calculated in bytes)
   const SIZE_LIMITS = {
     document: 25 * 1024 * 1024, // 25MB
     video: 100 * 1024 * 1024, // 100MB
   };
+
+  if (!SIZE_LIMITS[fileCategory]) {
+    throw new Error(`Unsupported file category: ${fileCategory}`);
+  }
 
   //Validate file size based on category and throw an error if it exceeds the limit
   if (fileCategory && SIZE_LIMITS[fileCategory]) {
@@ -47,19 +56,28 @@ export const uploadToCloudinary = async (buffer, options = {}) => {
 
   const uploadOptions = {
     folder: targetFolder,
+    public_id: fileName, // Use the provided fileName as the public ID
     resource_type: resourceType,
     context: additionalMetadata, // Attaches metadata directly to the asset in Cloudinary
   };
 
-  // The function returns a promise that resolves with the secure URL and public ID of the uploaded file
-  //Video and Document files are optimsed for delivery by default in Cloudinary, so no additional transformations are applied here.
+  // Raw documents are delivered as-is.
+  // Videos use q_auto and f_auto in the generated delivery URL for optimisation.
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
       if (error) return reject(error);
 
+      const optimizedUrl =
+        resourceType === 'video'
+          ? cloudinary.url(result.public_id, {
+              resource_type: 'video',
+              transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }],
+            })
+          : result.secure_url;
       // ] returns secure_url and public_id
       resolve({
         secure_url: result.secure_url,
+        optimized_url: optimizedUrl,
         public_id: result.public_id,
       });
     });
