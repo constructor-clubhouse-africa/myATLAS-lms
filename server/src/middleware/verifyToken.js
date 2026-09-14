@@ -22,10 +22,14 @@ export function verifyToken(req, res, next) {
     const decoded = verifyAccessToken(token);
 
     //Check if the decoded token contains all required claims and that they are not missing or empty
-    if(!decoded || typeof decoded !== 'object' || REQUIRED_CLAIMS.some(claim => isMissingClaim(decoded[claim]))) {
+    if (
+      !decoded ||
+      typeof decoded !== 'object' ||
+      REQUIRED_CLAIMS.some((claim) => isMissingClaim(decoded[claim]))
+    ) {
       return res.status(401).json({ error: 'Invalid or expired access token' });
     }
-    
+
     req.user = decoded; //{userId, schoolId, role}
     req.schoolId = decoded.schoolId; //schoolId set directly from the JWT payload for easy access in route handlers
     next();
