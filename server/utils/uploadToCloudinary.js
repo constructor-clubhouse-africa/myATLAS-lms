@@ -1,7 +1,7 @@
 import cloudinary from './configs/cloudinary.js';
 
 export const uploadToCloudinary = async (buffer, options = {}) => {
-  const { schoolId, fileCategory, fileName, additionalMetadata } = options;
+  const { schoolId, fileCategory, additionalMetadata } = options;
 
   // Validate the input parameters
 
@@ -43,7 +43,7 @@ export const uploadToCloudinary = async (buffer, options = {}) => {
     resourceType = 'raw';
   }
 
-  const targetFolder = `schools/${schoolId}/${fileCategory}s/${fileName}`;
+  const targetFolder = `schools/${schoolId}/${fileCategory}s`;
 
   const uploadOptions = {
     folder: targetFolder,
