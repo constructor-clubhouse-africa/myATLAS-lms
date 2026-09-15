@@ -1,4 +1,4 @@
-import cloudinary from '..configs/cloudinary.js';
+import cloudinary from '../configs/cloudinary.js';
 
 export const uploadToCloudinary = async (buffer, options = {}) => {
   const { schoolId, fileCategory, fileName, additionalMetadata } = options;
@@ -61,7 +61,7 @@ export const uploadToCloudinary = async (buffer, options = {}) => {
     context: additionalMetadata, // Attaches metadata directly to the asset in Cloudinary
   };
 
-  // Raw documents are delivered as-is.
+  // Raw documents are delivered as-is, while videos are optimized for delivery using Cloudinary's automatic quality and format settings.
   // Videos use q_auto and f_auto in the generated delivery URL for optimisation.
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
