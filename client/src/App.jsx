@@ -11,7 +11,7 @@ export default function App() {
       <Routes>
         {/*redirect root URL to /components for demo preview */}
         <Route path="/" element={<Navigate to="/components" replace />} />
-        
+
         {/*component gallery route */}
         <Route path="/components" element={<Demo />} />
 
