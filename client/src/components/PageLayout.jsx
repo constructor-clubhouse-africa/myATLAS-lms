@@ -84,9 +84,13 @@ export function PageLayout({
               )}
 
               {/*title*/}
-              <h7 className="text-[20px] font-bold text-navy truncate leading-normal m-0 p-0 mb-1.5">
-                {title}
-              </h7>
+              {/*h1 caused the title to be cut off with elipses. This keeps the h1 element while ensuring a smaller font that 
+              does not block the content or get cut off.*/}
+              <h1 className="font-bold text-navy truncate leading-normal m-0 p-0 mb-1.5 block min-w-0"
+                  style={{ fontSize: '20px', margin: 0, padding: 0 }}
+              >
+                  {title}
+              </h1>
 
               {/*subtitle*/}
               {subtitle && (

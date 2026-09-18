@@ -44,7 +44,8 @@ export function Select({
         <select
           id={selectId}
           disabled={disabled}
-          value={value}
+          //resolved value
+          value={value ?? ''}
           className={`${baseSelectStyles} ${stateStyles} ${widthStyle} ${className}`}
           {...props}
         >

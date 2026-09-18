@@ -29,9 +29,18 @@ export function Card({
     ? 'cursor-pointer hover:shadow-lg active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-teal'
     : '';
 
+  //keyboard support for Enter and Space keys when card acts as a button
+  const handleKeyDown = (e) => {
+    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault(); //prevents page scrolling when pressing 'Space'
+      onClick(e);
+    }
+  };
+
   return (
     <div
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       tabIndex={onClick ? 0 : undefined}
       role={onClick ? 'button' : undefined}
       className={`${baseStyles} ${variants[variant]} ${interactiveStyles} ${className}`}
