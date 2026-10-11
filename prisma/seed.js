@@ -94,7 +94,7 @@ async function main() {
   const resolve = (rows) =>
     rows.map(({ subjectSourceId, ...rest }) => {
       const subjectId = subjectMap.get(subjectSourceId);
-      if (!subjectId) throw new Error(`No subject with sourceId ${subjectSourceId}`);
+      if (!subjectId && !DRY_RUN) throw new Error(`No subject with sourceId ${subjectSourceId}`);
       return { ...rest, subjectId };
     });
 
