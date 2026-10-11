@@ -9,13 +9,9 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        {/*redirect root URL to /components for demo preview */}
-        <Route path="/" element={<Navigate to="/components" replace />} />
+        {/* Redirect root path to login */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
 
-        {/*component gallery route */}
-        <Route path="/components" element={<Demo />} />
-
-        {/*application routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/admin/*" element={<AdminDashboard />} />
         <Route path="/teacher/*" element={<TeacherDashboard />} />
